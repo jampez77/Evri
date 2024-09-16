@@ -1,0 +1,33 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Device is already configured"
+        },
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "unknown": "Unexpected error"
+        },
+        "step": {
+            "user": {
+                "description": "Press submit to add the integration.\n\nThen use the available actions in Developer Tools to start tracking parcels.",
+                "title": "Evri"
+            }
+        }
+    },
+    "services": {
+        "track_a_parcel": {
+            "fields": {
+                "postcode": {
+                    "description": "The postcode the parcel is getting delivered to",
+                    "name": "Postcode"
+                },
+                "tracking_number": {
+                    "description": "Your 16 digit tracking number or 8 digit calling card number.",
+                    "name": "Tracking number"
+                }
+            },
+            "name": "Track an Evri parcel"
+        }
+    }
+}

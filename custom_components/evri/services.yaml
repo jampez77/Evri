@@ -1,0 +1,9 @@
+track_a_parcel:
+  fields:
+    tracking_number:
+      required: true
+      selector:
+        text:
+    postcode:
+      selector:
+        text:
