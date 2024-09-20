@@ -252,7 +252,10 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         self._attr_unique_id = f"{DOMAIN}_{tracking_number}"
         self.entity_id = f"sensor.{DOMAIN}_{self.tracking_number}".lower()
 
-        self._state = None
+        self._state = self.data[CONF_TRACKINGEVENTS][0][CONF_TRACKINGSTAGE][
+            CONF_DESCRIPTION
+        ]
+        self._attr_icon = "mdi:package-variant-closed"
         self.attrs: dict[str, Any] = {}
         self._available = True
 
@@ -271,37 +274,18 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         self._state = self.data[CONF_TRACKINGEVENTS][0][CONF_TRACKINGSTAGE][
             CONF_DESCRIPTION
         ]
-        self.attrs = self.extra_state_attributes
-        self.async_write_ha_state()
 
-    async def async_remove(self) -> None:
-        """Handle the removal of the entity."""
-        # If you have any specific cleanup logic, add it here
-        await super().async_remove()
-
-    @property
-    def icon(self) -> str:
-        """Return a representative icon of the timer."""
         if CONF_TRACKINGEVENTS in self.data and len(self.data[CONF_TRACKINGEVENTS]) > 0:
             lastTrackingStageCode = self.data[CONF_TRACKINGEVENTS][0][
                 CONF_TRACKINGSTAGE
             ][CONF_TRACKINGSTAGECODE]
             if lastTrackingStageCode in DELIVERY_DELIVERED_EVENTS:
-                return "mdi:package-variant-closed-check"
+                self._attr_icon = "mdi:package-variant-closed-check"
             if lastTrackingStageCode in DELIVERY_TODAY_EVENTS:
-                return "mdi:truck-delivery-outline"
+                self._attr_icon = "mdi:truck-delivery-outline"
             if lastTrackingStageCode in DELIVERY_TRANSIT_EVENTS:
-                return "mdi:transit-connection-variant"
-        return "mdi:package-variant-closed"
+                self._attr_icon = "mdi:transit-connection-variant"
 
-    @property
-    def native_value(self) -> str | None:
-        """Native value."""
-        return self.data[CONF_TRACKINGEVENTS][0][CONF_TRACKINGSTAGE][CONF_DESCRIPTION]
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Define entity attributes."""
         if isinstance(self.data, (dict, list)):
             for index, attribute in enumerate(self.data):
                 if isinstance(attribute, (dict, list)):
@@ -310,4 +294,25 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
                 else:
                     self.attrs[attribute] = self.data[attribute]
 
+        self.async_write_ha_state()
+
+    async def async_remove(self) -> None:
+        """Handle the removal of the entity."""
+        # If you have any specific cleanup logic, add it here
+        if self.hass is not None:
+            await super().async_remove()
+
+    @property
+    def icon(self) -> str:
+        """Return a representative icon of the timer."""
+        return self._attr_icon
+
+    @property
+    def native_value(self) -> str | None:
+        """Native value."""
+        return self._state
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Define entity attributes."""
         return self.attrs

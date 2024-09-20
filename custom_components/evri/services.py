@@ -108,11 +108,11 @@ async def track_a_parcel(hass: HomeAssistant, call: ServiceCall) -> None:
     if most_recent_tracking_event_stage in DELIVERY_DELIVERED_EVENTS:
         await notify_delivered_parcel(hass, tracking_number)
         return False
-    else:
-        await hass.config_entries.flow.async_init(
-            DOMAIN,
-            context={"source": "import"},
-            data=call.data,
-        )
+
+    await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "import"},
+        data=call.data,
+    )
 
     return True
