@@ -27,8 +27,7 @@
                     "name": "Postcode"
                 }
             },
-            "name": "Track an Evri parcel",
-            "description": "Add an Evri parcel"
+            "name": "Track an Evri parcel"
         }
     }
 }

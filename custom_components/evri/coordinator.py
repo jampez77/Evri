@@ -35,7 +35,7 @@ class EvriCoordinator(DataUpdateCoordinator):
             # Name of the data. For logging purposes.
             name=DOMAIN,
             # Polling interval. Will only be polled if there are subscribers.
-            update_interval=timedelta(seconds=300),
+            update_interval=timedelta(minutes=5),
         )
         self.session = session
         self.tracking_number = data[CONF_TRACKING_NUMBER]

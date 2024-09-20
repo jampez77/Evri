@@ -266,6 +266,14 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         """Return if the entity is available."""
         return self.coordinator.last_update_success and self.data is not None
 
+    async def async_update(self):
+        """Handle updates to the sensor."""
+        self._state = self.data[CONF_TRACKINGEVENTS][0][CONF_TRACKINGSTAGE][
+            CONF_DESCRIPTION
+        ]
+        self.attrs = self.extra_state_attributes
+        self.async_write_ha_state()
+
     async def async_remove(self) -> None:
         """Handle the removal of the entity."""
         # If you have any specific cleanup logic, add it here
