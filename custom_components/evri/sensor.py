@@ -5,7 +5,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
@@ -259,6 +259,40 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         self.attrs: dict[str, Any] = {}
         self._available = True
 
+    def update_from_coordinator(self):
+        """Update sensor state and attributes from coordinator data."""
+        if CONF_RESULTS in self.coordinator.data:
+            self.data = self.coordinator.data.get(CONF_RESULTS)[0]
+            tracking_events = self.data.get(CONF_TRACKINGEVENTS, [])
+            if tracking_events:
+                most_recent_event = tracking_events[0]
+                self._state = most_recent_event[CONF_TRACKINGSTAGE][CONF_DESCRIPTION]
+                last_tracking_stage_code = most_recent_event[CONF_TRACKINGSTAGE][
+                    CONF_TRACKINGSTAGECODE
+                ]
+
+                # Update icon based on tracking stage
+                if last_tracking_stage_code in DELIVERY_DELIVERED_EVENTS:
+                    self._attr_icon = "mdi:package-variant-closed-check"
+                elif last_tracking_stage_code in DELIVERY_TODAY_EVENTS:
+                    self._attr_icon = "mdi:truck-delivery-outline"
+                elif last_tracking_stage_code in DELIVERY_TRANSIT_EVENTS:
+                    self._attr_icon = "mdi:transit-connection-variant"
+
+        # Update attributes
+        if isinstance(self.data, (dict, list)):
+            for index, attribute in enumerate(self.data):
+                if isinstance(attribute, (dict, list)):
+                    for attr in attribute:
+                        self.attrs[str(attr) + str(index)] = attribute[attr]
+                else:
+                    self.attrs[attribute] = self.data[attribute]
+
+    async def async_added_to_hass(self) -> None:
+        """Handle adding to Home Assistant."""
+        await super().async_added_to_hass()
+        await self.async_update()
+
     @property
     def name(self):
         """Name."""
@@ -269,31 +303,15 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         """Return if the entity is available."""
         return self.coordinator.last_update_success and self.data is not None
 
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.update_from_coordinator()
+        self.async_write_ha_state()
+
     async def async_update(self):
         """Handle updates to the sensor."""
-        self._state = self.data[CONF_TRACKINGEVENTS][0][CONF_TRACKINGSTAGE][
-            CONF_DESCRIPTION
-        ]
-
-        if CONF_TRACKINGEVENTS in self.data and len(self.data[CONF_TRACKINGEVENTS]) > 0:
-            lastTrackingStageCode = self.data[CONF_TRACKINGEVENTS][0][
-                CONF_TRACKINGSTAGE
-            ][CONF_TRACKINGSTAGECODE]
-            if lastTrackingStageCode in DELIVERY_DELIVERED_EVENTS:
-                self._attr_icon = "mdi:package-variant-closed-check"
-            if lastTrackingStageCode in DELIVERY_TODAY_EVENTS:
-                self._attr_icon = "mdi:truck-delivery-outline"
-            if lastTrackingStageCode in DELIVERY_TRANSIT_EVENTS:
-                self._attr_icon = "mdi:transit-connection-variant"
-
-        if isinstance(self.data, (dict, list)):
-            for index, attribute in enumerate(self.data):
-                if isinstance(attribute, (dict, list)):
-                    for attr in attribute:
-                        self.attrs[str(attr) + str(index)] = attribute[attr]
-                else:
-                    self.attrs[attribute] = self.data[attribute]
-
+        self.update_from_coordinator()
         self.async_write_ha_state()
 
     async def async_remove(self) -> None:
