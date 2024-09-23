@@ -283,7 +283,22 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
 
     def update_from_coordinator(self):
         """Update sensor state and attributes from coordinator data."""
-        if CONF_RESULTS in self.coordinator.data:
+
+        most_recent_tracking_event = self.data.get(CONF_RESULTS)[0][
+            CONF_TRACKINGEVENTS
+        ][0]
+
+        most_recent_tracking_event_stage = most_recent_tracking_event[
+            CONF_TRACKINGSTAGE
+        ][CONF_TRACKINGSTAGECODE]
+        most_recent_tracking_event_date_time = most_recent_tracking_event[CONF_DATETIME]
+
+        if (
+            most_recent_tracking_event_stage in DELIVERY_DELIVERED_EVENTS
+            and hasParcelExpired(self.hass, most_recent_tracking_event_date_time)
+        ):
+            self.hass.async_add_job(removeParcel(self.hass, self.tracking_number))
+        elif CONF_RESULTS in self.coordinator.data:
             self.data = self.coordinator.data.get(CONF_RESULTS)[0]
             tracking_events = self.data.get(CONF_TRACKINGEVENTS, [])
             if tracking_events:
