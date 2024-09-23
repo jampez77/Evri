@@ -133,7 +133,7 @@ async def get_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[SensorEnt
 
     if total_sensor:
         # Update existing total parcels sensor
-        total_sensor.update_parcels(parcels, parcels_out_for_delivery)
+        total_sensor.update_parcels()
     else:
         total_sensor = TotalParcelsSensor(hass, entry, parcels_out_for_delivery)
         hass.data[DOMAIN][total_sensor.unique_id] = total_sensor
@@ -204,12 +204,34 @@ class TotalParcelsSensor(SensorEntity):
         """Set total parcels icon."""
         return "mdi:package-variant-closed"
 
-    def update_parcels(self, parcels: list, parcels_out_for_delivery: list):
+    def update_parcels(self):
         """Update parcels and re-calculate state."""
-        self.total_parcels = parcels
-        self.parcels_out_for_delivery = parcels_out_for_delivery
-        self.update_state()
-        self.async_write_ha_state()
+        entries = self.hass.config_entries.async_entries(DOMAIN)
+
+        if entries:
+            config_entry = entries[0]
+            parcels = config_entry.data.get(CONF_PARCELS, [])
+
+            parcels_out_for_delivery = [
+                parcel for parcel in parcels if self.is_parcel_delivery_today(parcel)
+            ]
+
+            self.total_parcels = parcels
+            self.parcels_out_for_delivery = parcels_out_for_delivery
+            self.update_state()
+
+            self.async_write_ha_state()
+
+    def is_parcel_delivery_today(self, parcel: dict) -> bool:
+        """Check if the parcel has been delivered."""
+        tracking_events = parcel.get(CONF_TRACKINGEVENTS, [])
+        if tracking_events:
+            most_recent_event = tracking_events[0]
+            last_tracking_stage_code = most_recent_event[CONF_TRACKINGSTAGE][
+                CONF_TRACKINGSTAGECODE
+            ]
+            return last_tracking_stage_code in DELIVERY_TODAY_EVENTS
+        return False
 
     async def async_remove(self) -> None:
         """Handle the removal of the entity."""
@@ -271,6 +293,10 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
                     CONF_TRACKINGSTAGECODE
                 ]
 
+                # Notify if the parcel is delivered
+                if last_tracking_stage_code in DELIVERY_DELIVERED_EVENTS:
+                    self.notify_total_parcels()
+
                 # Update icon based on tracking stage
                 if last_tracking_stage_code in DELIVERY_DELIVERED_EVENTS:
                     self._attr_icon = "mdi:package-variant-closed-check"
@@ -279,19 +305,25 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
                 elif last_tracking_stage_code in DELIVERY_TRANSIT_EVENTS:
                     self._attr_icon = "mdi:transit-connection-variant"
 
-        # Update attributes
-        if isinstance(self.data, (dict, list)):
-            for index, attribute in enumerate(self.data):
-                if isinstance(attribute, (dict, list)):
-                    for attr in attribute:
-                        self.attrs[str(attr) + str(index)] = attribute[attr]
-                else:
-                    self.attrs[attribute] = self.data[attribute]
+            # Update attributes
+            if isinstance(self.data, (dict, list)):
+                for index, attribute in enumerate(self.data):
+                    if isinstance(attribute, (dict, list)):
+                        for attr in attribute:
+                            self.attrs[str(attr) + str(index)] = attribute[attr]
+                    else:
+                        self.attrs[attribute] = self.data[attribute]
 
-    async def async_added_to_hass(self) -> None:
-        """Handle adding to Home Assistant."""
-        await super().async_added_to_hass()
-        await self.async_update()
+    def notify_total_parcels(self):
+        """Notify the total parcels sensor to update its state."""
+        total_sensor = None
+        for entity in self.hass.data[DOMAIN].values():
+            if isinstance(entity, TotalParcelsSensor):
+                total_sensor = entity
+                break
+
+        if total_sensor:
+            total_sensor.update_parcels()
 
     @property
     def name(self):
@@ -309,10 +341,10 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         self.update_from_coordinator()
         self.async_write_ha_state()
 
-    async def async_update(self):
-        """Handle updates to the sensor."""
-        self.update_from_coordinator()
-        self.async_write_ha_state()
+    async def async_added_to_hass(self) -> None:
+        """Handle adding to Home Assistant."""
+        await super().async_added_to_hass()
+        await self.async_update()
 
     async def async_remove(self) -> None:
         """Handle the removal of the entity."""

@@ -4,10 +4,8 @@ import functools
 
 import voluptuous as vol
 
-from homeassistant.components.persistent_notification import (
-    async_create as create_notification,
-)
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -53,30 +51,6 @@ def async_setup_services(hass: HomeAssistant) -> None:
         hass.services.async_register(DOMAIN, name, method, schema=schema)
 
 
-async def notify_duplicate_parcel(hass: HomeAssistant, tracking_number: str) -> None:
-    """Notify user that the parcel is already tracked."""
-    message = (
-        f"The parcel with tracking number {tracking_number} is already being tracked."
-    )
-    title = "Duplicate Parcel"
-    notification_id = f"duplicate_parcel_{tracking_number}"
-
-    # Create a persistent notification
-    create_notification(hass, message, title=title, notification_id=notification_id)
-
-
-async def notify_delivered_parcel(hass: HomeAssistant, tracking_number: str) -> None:
-    """Notify user that the parcel is already tracked."""
-    message = (
-        f"The parcel with tracking number {tracking_number} has already been delivered."
-    )
-    title = "Parcel Already Delivered"
-    notification_id = f"parcel_already_delivered_{tracking_number}"
-
-    # Create a persistent notification
-    create_notification(hass, message, title=title, notification_id=notification_id)
-
-
 async def track_a_parcel(hass: HomeAssistant, call: ServiceCall) -> None:
     """Track a parcel."""
     tracking_number = call.data.get(CONF_TRACKING_NUMBER)
@@ -85,8 +59,9 @@ async def track_a_parcel(hass: HomeAssistant, call: ServiceCall) -> None:
         if tracking_number in [
             parcel[CONF_TRACKING_NUMBER] for parcel in entry.data.get(CONF_PARCELS, [])
         ]:
-            await notify_duplicate_parcel(hass, tracking_number)
-            return False
+            raise HomeAssistantError(
+                f"The parcel with tracking number {tracking_number} is already being tracked."
+            )
 
     session = async_get_clientsession(hass)
 
@@ -95,7 +70,7 @@ async def track_a_parcel(hass: HomeAssistant, call: ServiceCall) -> None:
     await coordinator.async_refresh()
 
     if coordinator.last_exception is not None:
-        return False
+        raise HomeAssistantError("There was an error connecting with the Evri server.")
 
     most_recent_tracking_event = coordinator.data.get(CONF_RESULTS)[0][
         CONF_TRACKINGEVENTS
@@ -106,8 +81,9 @@ async def track_a_parcel(hass: HomeAssistant, call: ServiceCall) -> None:
     ]
 
     if most_recent_tracking_event_stage in DELIVERY_DELIVERED_EVENTS:
-        await notify_delivered_parcel(hass, tracking_number)
-        return False
+        raise HomeAssistantError(
+            f"The parcel with tracking number {tracking_number} has already been delivered."
+        )
 
     await hass.config_entries.flow.async_init(
         DOMAIN,
