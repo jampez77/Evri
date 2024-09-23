@@ -284,9 +284,7 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
     def update_from_coordinator(self):
         """Update sensor state and attributes from coordinator data."""
 
-        most_recent_tracking_event = self.data.get(CONF_RESULTS)[0][
-            CONF_TRACKINGEVENTS
-        ][0]
+        most_recent_tracking_event = self.data[CONF_TRACKINGEVENTS][0]
 
         most_recent_tracking_event_stage = most_recent_tracking_event[
             CONF_TRACKINGSTAGE
