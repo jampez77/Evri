@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import voluptuous as vol
 
-from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.core import callback
-from homeassistant.data_entry_flow import FlowResult
 
 from .const import CONF_PARCELS, DOMAIN
 
 
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class ConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Royal Mail."""
 
     VERSION = 1
@@ -22,7 +21,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         existing_entries = self._async_current_entries()
         return len(existing_entries) > 0
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_user(self, user_input=None) -> ConfigFlowResult:
         """Handle the initial step (no user input)."""
         if self._entry_exists():
             return self.async_abort(reason="already_configured")
@@ -36,7 +35,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({}),
         )
 
-    async def async_step_import(self, import_data=None) -> FlowResult:
+    async def async_step_import(self, import_data=None) -> ConfigFlowResult:
         """Handle the import step for the service call."""
 
         if import_data is not None:

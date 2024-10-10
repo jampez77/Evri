@@ -17,6 +17,7 @@
     },
     "services": {
         "track_a_parcel": {
+            "description": "Add an Evri parcel",
             "fields": {
                 "postcode": {
                     "description": "The postcode the parcel is getting delivered to",
@@ -27,8 +28,7 @@
                     "name": "Tracking number"
                 }
             },
-            "name": "Track an Evri parcel",
-            "description": "Add an Evri parcel"
+            "name": "Track an Evri parcel"
         }
     }
 }

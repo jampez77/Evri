@@ -26,10 +26,10 @@ from .const import (
     CONF_TRACKINGEVENTS,
     CONF_TRACKINGSTAGE,
     CONF_TRACKINGSTAGECODE,
-    DELIVERY_DELIVERED_EVENTS,
-    DELIVERY_TODAY_EVENTS,
-    DELIVERY_TRANSIT_EVENTS,
     DOMAIN,
+    PARCEL_DELIVERED,
+    PARCEL_DELIVERY_TODAY,
+    PARCEL_IN_TRANSIT,
 )
 from .coordinator import EvriCoordinator
 
@@ -112,13 +112,13 @@ async def get_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[SensorEnt
 
         if (
             parcel in parcels
-            and most_recent_tracking_event_stage in DELIVERY_DELIVERED_EVENTS
+            and most_recent_tracking_event_stage in PARCEL_DELIVERED
             and hasParcelExpired(hass, most_recent_tracking_event_date_time)
         ):
             await removeParcel(hass, tracking_number)
             parcels.remove(parcel)
         else:
-            if most_recent_tracking_event_stage in DELIVERY_TODAY_EVENTS:
+            if most_recent_tracking_event_stage in PARCEL_DELIVERY_TODAY:
                 parcels_out_for_delivery.append(parcel)
 
             sensors = [*sensors, ParcelSensor(coordinator, tracking_number)]
@@ -167,7 +167,7 @@ class TotalParcelsSensor(SensorEntity):
 
     def __init__(
         self, hass: HomeAssistant, entry: ConfigEntry, parcels_out_for_delivery: list
-    ):
+    ) -> None:
         """Init."""
         self.total_parcels = entry.data[CONF_PARCELS]
         self.parcels_out_for_delivery = parcels_out_for_delivery
@@ -186,12 +186,12 @@ class TotalParcelsSensor(SensorEntity):
         self.attrs: dict[str, Any] = {}
 
     @property
-    def name(self):
+    def name(self) -> str:
         """Name."""
         return self._name
 
     @property
-    def state(self):
+    def state(self) -> str:
         """State."""
         return self._state
 
@@ -230,7 +230,7 @@ class TotalParcelsSensor(SensorEntity):
             last_tracking_stage_code = most_recent_event[CONF_TRACKINGSTAGE][
                 CONF_TRACKINGSTAGECODE
             ]
-            return last_tracking_stage_code in DELIVERY_TODAY_EVENTS
+            return last_tracking_stage_code in PARCEL_DELIVERY_TODAY
         return False
 
     async def async_remove(self) -> None:
@@ -271,8 +271,8 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
             name="Evri - Parcel Tracker",
             configuration_url="https://github.com/jampez77/Evri/",
         )
-        self._attr_unique_id = f"{DOMAIN}_{tracking_number}"
-        self.entity_id = f"sensor.{DOMAIN}_{self.tracking_number}".lower()
+        self._attr_unique_id = f"{DOMAIN}_parcel_{tracking_number}"
+        self.entity_id = f"sensor.{DOMAIN}_parcel_{self.tracking_number}".lower()
 
         self._state = self.data[CONF_TRACKINGEVENTS][0][CONF_TRACKINGSTAGE][
             CONF_DESCRIPTION
@@ -291,9 +291,8 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         ][CONF_TRACKINGSTAGECODE]
         most_recent_tracking_event_date_time = most_recent_tracking_event[CONF_DATETIME]
 
-        if (
-            most_recent_tracking_event_stage in DELIVERY_DELIVERED_EVENTS
-            and hasParcelExpired(self.hass, most_recent_tracking_event_date_time)
+        if most_recent_tracking_event_stage in PARCEL_DELIVERED and hasParcelExpired(
+            self.hass, most_recent_tracking_event_date_time
         ):
             self.hass.async_add_job(removeParcel(self.hass, self.tracking_number))
         elif CONF_RESULTS in self.coordinator.data:
@@ -307,15 +306,15 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
                 ]
 
                 # Notify if the parcel is delivered
-                if last_tracking_stage_code in DELIVERY_DELIVERED_EVENTS:
+                if last_tracking_stage_code in PARCEL_DELIVERED:
                     self.notify_total_parcels()
 
                 # Update icon based on tracking stage
-                if last_tracking_stage_code in DELIVERY_DELIVERED_EVENTS:
+                if last_tracking_stage_code in PARCEL_DELIVERED:
                     self._attr_icon = "mdi:package-variant-closed-check"
-                elif last_tracking_stage_code in DELIVERY_TODAY_EVENTS:
+                elif last_tracking_stage_code in PARCEL_DELIVERY_TODAY:
                     self._attr_icon = "mdi:truck-delivery-outline"
-                elif last_tracking_stage_code in DELIVERY_TRANSIT_EVENTS:
+                elif last_tracking_stage_code in PARCEL_IN_TRANSIT:
                     self._attr_icon = "mdi:transit-connection-variant"
 
             # Update attributes
@@ -339,7 +338,7 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
             total_sensor.update_parcels()
 
     @property
-    def name(self):
+    def name(self) -> str:
         """Name."""
         return self.tracking_number
 

@@ -18,8 +18,8 @@ from .const import (
     CONF_TRACKINGEVENTS,
     CONF_TRACKINGSTAGE,
     CONF_TRACKINGSTAGECODE,
-    DELIVERY_DELIVERED_EVENTS,
     DOMAIN,
+    PARCEL_DELIVERED,
 )
 from .coordinator import EvriCoordinator
 
@@ -80,7 +80,7 @@ async def track_a_parcel(hass: HomeAssistant, call: ServiceCall) -> None:
         CONF_TRACKINGSTAGECODE
     ]
 
-    if most_recent_tracking_event_stage in DELIVERY_DELIVERED_EVENTS:
+    if most_recent_tracking_event_stage in PARCEL_DELIVERED:
         raise HomeAssistantError(
             f"The parcel with tracking number {tracking_number} has already been delivered."
         )
