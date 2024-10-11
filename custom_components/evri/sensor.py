@@ -172,7 +172,7 @@ class TotalParcelsSensor(SensorEntity):
         self.total_parcels = entry.data[CONF_PARCELS]
         self.parcels_out_for_delivery = parcels_out_for_delivery
         self._state = len(self.total_parcels)
-        self._name = "Tracked Parcels"
+        self._name = "Evri Parcels"
         self.hass = hass
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{DOMAIN}".upper())},
