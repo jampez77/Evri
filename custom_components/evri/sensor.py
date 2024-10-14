@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_AVAILABLE_FOR_COLLECTION,
     CONF_DATETIME,
     CONF_DESCRIPTION,
     CONF_OUT_FOR_DELIVERY,
@@ -24,12 +25,19 @@ from .const import (
     CONF_RESULTS,
     CONF_TRACKING_NUMBER,
     CONF_TRACKINGEVENTS,
+    CONF_TRACKINGPOINT,
     CONF_TRACKINGSTAGE,
     CONF_TRACKINGSTAGECODE,
     DOMAIN,
+    PARCEL_CALL_TO_ACTION,
+    PARCEL_COLLECTION,
     PARCEL_DELIVERED,
     PARCEL_DELIVERY_TODAY,
     PARCEL_IN_TRANSIT,
+    PARCEL_INFORMATION,
+    PARCEL_IS_FINISHED,
+    PARCEL_RETURNED,
+    PARCEL_READY_FOR_COLLECTION,
 )
 from .coordinator import EvriCoordinator
 
@@ -89,6 +97,7 @@ async def get_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[SensorEnt
 
     sensors = []
     parcels_out_for_delivery = []
+    parcels_available_for_collection = []
     for parcel in parcels:
         tracking_number = parcel[CONF_TRACKING_NUMBER]
 
@@ -112,7 +121,7 @@ async def get_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[SensorEnt
 
         if (
             parcel in parcels
-            and most_recent_tracking_event_stage in PARCEL_DELIVERED
+            and most_recent_tracking_event_stage in PARCEL_IS_FINISHED
             and hasParcelExpired(hass, most_recent_tracking_event_date_time)
         ):
             await removeParcel(hass, tracking_number)
@@ -120,6 +129,9 @@ async def get_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[SensorEnt
         else:
             if most_recent_tracking_event_stage in PARCEL_DELIVERY_TODAY:
                 parcels_out_for_delivery.append(parcel)
+
+            if most_recent_tracking_event_stage in PARCEL_READY_FOR_COLLECTION:
+                parcels_available_for_collection.append(parcel)
 
             sensors = [*sensors, ParcelSensor(coordinator, tracking_number)]
             for sensor in sensors:
@@ -135,7 +147,9 @@ async def get_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[SensorEnt
         # Update existing total parcels sensor
         total_sensor.update_parcels()
     else:
-        total_sensor = TotalParcelsSensor(hass, entry, parcels_out_for_delivery)
+        total_sensor = TotalParcelsSensor(
+            hass, entry, parcels_out_for_delivery, parcels_available_for_collection
+        )
         hass.data[DOMAIN][total_sensor.unique_id] = total_sensor
         total_sensor.update_state()
         sensors = [*sensors, total_sensor]
@@ -166,11 +180,16 @@ class TotalParcelsSensor(SensorEntity):
     """Sensor to track the total number of parcels."""
 
     def __init__(
-        self, hass: HomeAssistant, entry: ConfigEntry, parcels_out_for_delivery: list
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        parcels_out_for_delivery: list,
+        parcels_available_for_collection: list,
     ) -> None:
         """Init."""
         self.total_parcels = entry.data[CONF_PARCELS]
         self.parcels_out_for_delivery = parcels_out_for_delivery
+        self.parcels_available_for_collection = parcels_available_for_collection
         self._state = len(self.total_parcels)
         self._name = "Evri Parcels"
         self.hass = hass
@@ -216,8 +235,15 @@ class TotalParcelsSensor(SensorEntity):
                 parcel for parcel in parcels if self.is_parcel_delivery_today(parcel)
             ]
 
+            parcels_available_for_collection = [
+                parcel
+                for parcel in parcels
+                if self.is_parcel_available_for_collection(parcel)
+            ]
+
             self.total_parcels = parcels
             self.parcels_out_for_delivery = parcels_out_for_delivery
+            self.parcels_available_for_collection = parcels_available_for_collection
             self.update_state()
 
             self.async_write_ha_state()
@@ -231,6 +257,17 @@ class TotalParcelsSensor(SensorEntity):
                 CONF_TRACKINGSTAGECODE
             ]
             return last_tracking_stage_code in PARCEL_DELIVERY_TODAY
+        return False
+
+    def is_parcel_available_for_collection(self, parcel: dict) -> bool:
+        """Check if the parcel is ready to collect."""
+        tracking_events = parcel.get(CONF_TRACKINGEVENTS, [])
+        if tracking_events:
+            most_recent_event = tracking_events[0]
+            last_tracking_stage_code = most_recent_event[CONF_TRACKINGSTAGE][
+                CONF_TRACKINGSTAGECODE
+            ]
+            return last_tracking_stage_code in PARCEL_READY_FOR_COLLECTION
         return False
 
     async def async_remove(self) -> None:
@@ -248,6 +285,11 @@ class TotalParcelsSensor(SensorEntity):
 
         self.attrs[CONF_OUT_FOR_DELIVERY] = [
             parcel[CONF_TRACKING_NUMBER] for parcel in self.parcels_out_for_delivery
+        ]
+
+        self.attrs[CONF_AVAILABLE_FOR_COLLECTION] = [
+            parcel[CONF_TRACKING_NUMBER]
+            for parcel in self.parcels_available_for_collection
         ]
 
         return self.attrs
@@ -291,7 +333,7 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         ][CONF_TRACKINGSTAGECODE]
         most_recent_tracking_event_date_time = most_recent_tracking_event[CONF_DATETIME]
 
-        if most_recent_tracking_event_stage in PARCEL_DELIVERED and hasParcelExpired(
+        if most_recent_tracking_event_stage in PARCEL_IS_FINISHED and hasParcelExpired(
             self.hass, most_recent_tracking_event_date_time
         ):
             self.hass.async_add_job(removeParcel(self.hass, self.tracking_number))
@@ -300,22 +342,31 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
             tracking_events = self.data.get(CONF_TRACKINGEVENTS, [])
             if tracking_events:
                 most_recent_event = tracking_events[0]
-                self._state = most_recent_event[CONF_TRACKINGSTAGE][CONF_DESCRIPTION]
+                self._state = most_recent_event[CONF_TRACKINGPOINT][CONF_DESCRIPTION]
                 last_tracking_stage_code = most_recent_event[CONF_TRACKINGSTAGE][
                     CONF_TRACKINGSTAGECODE
                 ]
 
                 # Notify if the parcel is delivered
-                if last_tracking_stage_code in PARCEL_DELIVERED:
+                if last_tracking_stage_code in PARCEL_IS_FINISHED:
                     self.notify_total_parcels()
 
                 # Update icon based on tracking stage
-                if last_tracking_stage_code in PARCEL_DELIVERED:
+                if (
+                    last_tracking_stage_code in PARCEL_DELIVERED
+                    or last_tracking_stage_code == PARCEL_RETURNED
+                ):
                     self._attr_icon = "mdi:package-variant-closed-check"
+                elif last_tracking_stage_code in PARCEL_COLLECTION:
+                    self._attr_icon = "mdi:human-dolly"
                 elif last_tracking_stage_code in PARCEL_DELIVERY_TODAY:
                     self._attr_icon = "mdi:truck-delivery-outline"
                 elif last_tracking_stage_code in PARCEL_IN_TRANSIT:
                     self._attr_icon = "mdi:transit-connection-variant"
+                elif last_tracking_stage_code == PARCEL_CALL_TO_ACTION:
+                    self._attr_icon = "mdi:alert-box"
+                elif last_tracking_stage_code == PARCEL_INFORMATION:
+                    self._attr_icon = "mdi:information-box"
 
             # Update attributes
             if isinstance(self.data, (dict, list)):
