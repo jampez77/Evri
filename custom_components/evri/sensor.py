@@ -36,8 +36,8 @@ from .const import (
     PARCEL_IN_TRANSIT,
     PARCEL_INFORMATION,
     PARCEL_IS_FINISHED,
-    PARCEL_RETURNED,
     PARCEL_READY_FOR_COLLECTION,
+    PARCEL_RETURNED,
 )
 from .coordinator import EvriCoordinator
 
@@ -347,10 +347,6 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
                     CONF_TRACKINGSTAGECODE
                 ]
 
-                # Notify if the parcel is delivered
-                if last_tracking_stage_code in PARCEL_IS_FINISHED:
-                    self.notify_total_parcels()
-
                 # Update icon based on tracking stage
                 if (
                     last_tracking_stage_code in PARCEL_DELIVERED
@@ -376,6 +372,8 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
                             self.attrs[str(attr) + str(index)] = attribute[attr]
                     else:
                         self.attrs[attribute] = self.data[attribute]
+
+            self.notify_total_parcels()
 
     def notify_total_parcels(self):
         """Notify the total parcels sensor to update its state."""
