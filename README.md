@@ -1,6 +1,6 @@
 # ![Logo](https://github.com/jampez77/Evri/blob/main/logo.png "Evri Logo") Evri parcel tracking for Home Assistant
 
-This integration synchronises your Royal Mail tracking data and adds sensors to [Home Assistant](https://www.home-assistant.io/) which can be used in your own automations.
+This integration allows you to track Evri parcels in [Home Assistant](https://www.home-assistant.io/) which can be used in your own automations.
 
 ---
 
