@@ -185,6 +185,24 @@ async def async_setup_entry(
     config_entry.add_update_listener(async_options_updated)
 
 
+async def remove_unavailable_entities(hass: HomeAssistant):
+    """Remove entities no longer provided by the integration."""
+    # Access the entity registry
+    registry = er.async_get(hass)
+
+    # Loop through all registered entities
+    for entity_id in list(registry.entities):
+        entity = registry.entities[entity_id]
+        # Check if the entity belongs to your integration (by checking domain)
+        if entity.platform == DOMAIN:
+            # Check if the entity is not available in `hass.states`
+            state = hass.states.get(entity_id)
+
+            # If the entity's state is unavailable or not in `hass.states`
+            if state is None or state.state == "unavailable":
+                registry.async_remove(entity_id)
+
+
 class TotalParcelsSensor(SensorEntity):
     """Sensor to track the total number of parcels."""
 
@@ -321,8 +339,8 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         self.entity_id = f"sensor.{DOMAIN}_parcel_{self.tracking_number}".lower()
 
         self._state = self.update_state()
-        self._attr_icon = "mdi:package-variant-closed"
-        self.attrs: dict[str, Any] = {}
+        self._attr_icon = self.update_icon()
+        self.attrs = self.update_attributes()
         self._available = True
 
     def update_state(self) -> str:
@@ -341,6 +359,47 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
 
         return value
 
+    def update_icon(self) -> str:
+        """Update icon."""
+
+        most_recent_event = self.data[CONF_TRACKINGEVENTS][0]
+
+        last_tracking_stage_code = most_recent_event[CONF_TRACKINGSTAGE][
+            CONF_TRACKINGSTAGECODE
+        ]
+
+        if (
+            last_tracking_stage_code in PARCEL_DELIVERED
+            or last_tracking_stage_code == PARCEL_RETURNED
+        ):
+            return "mdi:package-variant-closed-check"
+        elif last_tracking_stage_code in PARCEL_COLLECTION:
+            return "mdi:human-dolly"
+        elif last_tracking_stage_code in PARCEL_DELIVERY_TODAY:
+            return "mdi:truck-delivery-outline"
+        elif last_tracking_stage_code in PARCEL_IN_TRANSIT:
+            return "mdi:transit-connection-variant"
+        elif last_tracking_stage_code == PARCEL_CALL_TO_ACTION:
+            return "mdi:alert-box"
+        elif last_tracking_stage_code == PARCEL_INFORMATION:
+            return "mdi:information-box"
+        else:
+            return "mdi:package-variant-closed"
+
+    def update_attributes(self) -> dict[str, Any]:
+        """Update attributes."""
+        attributes = {}
+
+        if isinstance(self.data, (dict, list)):
+            for index, attribute in enumerate(self.data):
+                if isinstance(attribute, (dict, list)):
+                    for attr in attribute:
+                        attributes[str(attr) + str(index)] = attribute[attr]
+                else:
+                    attributes[attribute] = self.data[attribute]
+
+        return attributes
+
     def update_from_coordinator(self):
         """Update sensor state and attributes from coordinator data."""
 
@@ -357,41 +416,13 @@ class ParcelSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
             self.hass.async_add_job(removeParcel(self.hass, self.tracking_number))
         elif CONF_RESULTS in self.coordinator.data:
             self.data = self.coordinator.data.get(CONF_RESULTS)[0]
-            tracking_events = self.data.get(CONF_TRACKINGEVENTS, [])
-            if tracking_events:
-                most_recent_event = tracking_events[0]
-                self._state = self.update_state()
-                last_tracking_stage_code = most_recent_event[CONF_TRACKINGSTAGE][
-                    CONF_TRACKINGSTAGECODE
-                ]
+            self._state = self.update_state()
+            self._attr_icon = self.update_icon()
 
-                # Update icon based on tracking stage
-                if (
-                    last_tracking_stage_code in PARCEL_DELIVERED
-                    or last_tracking_stage_code == PARCEL_RETURNED
-                ):
-                    self._attr_icon = "mdi:package-variant-closed-check"
-                elif last_tracking_stage_code in PARCEL_COLLECTION:
-                    self._attr_icon = "mdi:human-dolly"
-                elif last_tracking_stage_code in PARCEL_DELIVERY_TODAY:
-                    self._attr_icon = "mdi:truck-delivery-outline"
-                elif last_tracking_stage_code in PARCEL_IN_TRANSIT:
-                    self._attr_icon = "mdi:transit-connection-variant"
-                elif last_tracking_stage_code == PARCEL_CALL_TO_ACTION:
-                    self._attr_icon = "mdi:alert-box"
-                elif last_tracking_stage_code == PARCEL_INFORMATION:
-                    self._attr_icon = "mdi:information-box"
-
-            # Update attributes
-            if isinstance(self.data, (dict, list)):
-                for index, attribute in enumerate(self.data):
-                    if isinstance(attribute, (dict, list)):
-                        for attr in attribute:
-                            self.attrs[str(attr) + str(index)] = attribute[attr]
-                    else:
-                        self.attrs[attribute] = self.data[attribute]
+            self.attrs = self.update_attributes()
 
             self.notify_total_parcels()
+            self.hass.add_job(remove_unavailable_entities(self.hass))
 
     def notify_total_parcels(self):
         """Notify the total parcels sensor to update its state."""
