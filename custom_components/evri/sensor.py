@@ -68,7 +68,7 @@ async def removeParcel(hass: HomeAssistant, tracking_number: str):
         entity_id
         for entity_id, entry in entity_registry.entities.items()
         if entry.platform == DOMAIN
-        and f"evri_{tracking_number}".lower() in entry.entity_id.lower()
+        and f"evri_parcel_{tracking_number}".lower() in entry.unique_id.lower()
     ]
     for entity in entities:
         entity_registry.async_remove(entity)
